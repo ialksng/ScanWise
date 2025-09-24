@@ -4,7 +4,7 @@ pytesseract
 Pillow
 torch
 transformers
-opencv-python-headless==4.8.1.78
+opencv-python
 numpy
 sentencepiece
 diff-match-patch
