@@ -1,0 +1,11 @@
+streamlit
+PyMuPDF
+pytesseract
+Pillow
+torch
+transformers
+opencv-python
+numpy
+sentencepiece
+diff-match-patch
+timm
