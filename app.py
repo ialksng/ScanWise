@@ -33,8 +33,8 @@ except Exception:
 @st.cache_resource
 def load_ocr_model():
     """Loads the TrOCR model for handwriting recognition."""
-    processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
-    model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
+    processor = TrOCRProcessor.from_pretrained('microsoft/trocr-small-handwritten')
+    model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-small-handwritten')
     return processor, model
 
 @st.cache_resource
