@@ -71,7 +71,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open [http://localhost:8501/work/projects/scanwise/app/](http://localhost:8501/work/projects/scanwise/app/). Upload a PDF, select an OCR engine, and review the results. The pinned PyTorch 2.7.1 and TorchVision 0.22.1 versions are a compatible pair; use the appropriate [PyTorch installation instructions](https://pytorch.org/get-started/locally/) if you need a GPU-specific build.
+Open [http://localhost:8501/work/projects/scanwise/app/](http://localhost:8501/work/projects/scanwise/app/). Choose an OCR engine, upload a PDF, then click **Analyze document** to start processing. The pinned PyTorch 2.7.1 and TorchVision 0.22.1 versions are a compatible pair; use the appropriate [PyTorch installation instructions](https://pytorch.org/get-started/locally/) if you need a GPU-specific build.
 
 ## Run with Docker
 
