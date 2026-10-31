@@ -9,6 +9,8 @@ ScanWise is a browser-based PDF document processing app built with Streamlit. It
 
 The app includes an **ialksing** button linking to the developer website.
 
+The Streamlit server is configured with `server.baseUrlPath` for this mounted path. The portfolio site's Vercel configuration forwards the path and all app subpaths to the Render service.
+
 ## Features
 
 - Extract text from PDF pages with Tesseract OCR or Microsoft's TrOCR handwritten-text model.
@@ -62,11 +64,13 @@ Install dependencies and start the app:
 
 ```bash
 python -m pip install --upgrade pip
+# Install the matching CPU-only PyTorch pair before the rest of the requirements.
+pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open the local URL printed by Streamlit (normally [http://localhost:8501](http://localhost:8501)). Upload a PDF, select an OCR engine, and review the results. A CPU-only PyTorch installation can be used when GPU support is not needed; follow the install command recommended by the [PyTorch installation selector](https://pytorch.org/get-started/locally/), then install the remaining requirements.
+Open [http://localhost:8501/work/projects/scanwise/app/](http://localhost:8501/work/projects/scanwise/app/). Upload a PDF, select an OCR engine, and review the results. The pinned PyTorch 2.7.1 and TorchVision 0.22.1 versions are a compatible pair; use the appropriate [PyTorch installation instructions](https://pytorch.org/get-started/locally/) if you need a GPU-specific build.
 
 ## Run with Docker
 
@@ -77,7 +81,7 @@ docker build -t scanwise .
 docker run --rm -p 8501:8501 scanwise
 ```
 
-Then open [http://localhost:8501](http://localhost:8501). The first model download can take time and requires internet access.
+Then open [http://localhost:8501/work/projects/scanwise/app/](http://localhost:8501/work/projects/scanwise/app/). The first model download can take time and requires internet access.
 
 ## Deployment
 
