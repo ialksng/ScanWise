@@ -9,7 +9,7 @@ ScanWise is a browser-based PDF document processing app built with Streamlit. It
 
 The app includes an **ialksing** button linking to the developer website.
 
-The Streamlit server is configured with `server.baseUrlPath` for this mounted path. The portfolio's Cloudflare Pages Function forwards app requests, including Streamlit's WebSocket connection, to the Render service. A Vercel rewrite is also configured for deployments that use Vercel.
+The Streamlit server is configured with `server.baseUrlPath` for this path. The portfolio's Cloudflare Pages Function redirects visitors to the Render service so Streamlit's WebSocket connects directly to the app host.
 
 ## Features
 
