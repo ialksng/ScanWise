@@ -41,6 +41,7 @@ The Streamlit server is configured with `server.baseUrlPath` for this mounted pa
 - Tesseract OCR is needed for the Fast Engine. Install it separately and make sure the `tesseract` executable is on your PATH. On Windows, the app also checks common installation locations. If using only the Accurate Engine, Tesseract is not required.
 - Internet access is needed the first time each Hugging Face model is loaded. The model files are cached afterward.
 - Model inference can use substantial memory. The app currently runs the correction model on CPU; PyTorch may use a GPU for TrOCR if available and configured.
+- Transformers is pinned to version 4.57.6 because the app's FLAN-T5 correction uses the `text2text-generation` pipeline, which was removed in Transformers 5.
 
 ### Setup
 
