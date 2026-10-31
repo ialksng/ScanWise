@@ -4,13 +4,11 @@ import os
 import shutil
 from datetime import datetime, timezone
 
-import cv2
 import fitz  # PyMuPDF
-import numpy as np
 import pytesseract
 import streamlit as st
 from diff_match_patch import diff_match_patch
-from PIL import Image
+from PIL import Image, ImageOps
 import bcrypt
 from groq import Groq
 from pymongo import MongoClient
@@ -119,10 +117,10 @@ def page_usage(image, text):
     if len(text.split()) > 10:
         return False, "Text detected"
 
-    rgb = np.asarray(image.convert("RGB"))
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-    ink_percent = (np.count_nonzero(ink) / ink.size) * 100 if ink.size else 0
+    gray = ImageOps.grayscale(image)
+    histogram = gray.histogram()
+    pixel_count = gray.width * gray.height
+    ink_percent = (sum(histogram[:128]) / pixel_count * 100) if pixel_count else 0
     if ink_percent < 0.5:
         return True, "Almost blank"
     return False, "Marks detected; little text found"

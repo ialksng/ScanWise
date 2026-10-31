@@ -29,7 +29,7 @@ The app's navbar contains **Home**, **Features**, **Workspace**, and **Account**
 - **App and UI:** Streamlit
 - **PDF rendering:** PyMuPDF (`fitz`)
 - **OCR:** Tesseract OCR through `pytesseract`
-- **Image processing and page analysis:** Pillow, OpenCV, NumPy
+- **Image processing and page analysis:** Pillow
 - **Text comparison:** `diff-match-patch`
 - **Optional proofreading and summaries:** Groq Python SDK, Groq Chat Completions API, default model `openai/gpt-oss-20b`
 - **Accounts:** MongoDB through PyMongo; bcrypt password hashing
