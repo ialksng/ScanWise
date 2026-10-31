@@ -138,7 +138,7 @@ with title_col:
     st.title("ScanWise")
     st.markdown("Digitize documents, correct text, and analyze content. Choose your engine for speed or accuracy.")
 with author_col:
-    st.link_button("ialksing", "https://ialksing.me", help="ScanWise is made by Alok Singh")
+    st.link_button("ialksng", "https://ialksng.me", help="ScanWise is made by Alok Singh")
 
 # --- ENGINE SELECTION ---
 st.header("1. Choose Your OCR Engine")
