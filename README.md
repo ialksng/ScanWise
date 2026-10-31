@@ -1,6 +1,8 @@
 # ScanWise
 
-ScanWise is a web app for turning scanned PDF documents into searchable, reviewable text. Upload a PDF in the workspace, choose printed-text or handwriting OCR, inspect the recognized and corrected text page by page, and download the result. With a Groq API key configured, **Ask with AI** creates a concise summary of the complete document.
+ScanWise is a browser-based app for extracting and reviewing text in scanned PDF documents. It uses Tesseract OCR for printed text, compares the extracted text with optional Groq proofreading, estimates blank or underused pages, and can summarize the complete document with Groq.
+
+The app is designed to run on small instances such as Render Free: local OCR uses Tesseract rather than downloading and loading PyTorch/Transformers models. It currently targets printed text; handwriting OCR is not included in this lightweight version.
 
 ## Links
 
@@ -9,43 +11,42 @@ ScanWise is a web app for turning scanned PDF documents into searchable, reviewa
 - **Developer:** [Alok Singh — ialksng.me](https://ialksng.me)
 - **Source code:** [github.com/ialksng/ScanWise](https://github.com/ialksng/ScanWise)
 
-The app's top navigation contains **Home**, **Features**, **Workspace**, and **Account**, plus an **ialksng** link to the developer site. The portfolio route forwards the app path to the Render service so Streamlit's WebSocket connection is made directly to the app host.
+The app's navbar contains **Home**, **Features**, **Workspace**, and **Account**, plus the **ialksng** developer link. The portfolio route proxies requests to Render while keeping the public URL on `ialksng.me`, including the Streamlit WebSocket connection.
 
-## What it does
+## Features
 
-- Extracts printed text with Tesseract OCR or handwritten text with Microsoft's TrOCR model.
-- Corrects spelling and grammar with Google's FLAN-T5 model.
-- Shows page previews, recognized text, corrected text, and highlighted changes.
-- Estimates blank or underused pages and lets you download corrected text.
-- Summarizes all recognized document text with Groq when **Ask with AI** is selected.
-- Provides MongoDB-backed account creation and sign-in. Passwords are stored as bcrypt hashes. Uploaded PDFs and OCR output are not saved in MongoDB; they remain in the active Streamlit session.
+- Extract printed text from PDFs with Tesseract OCR.
+- Optionally correct spelling and punctuation with Groq.
+- Review page previews, extracted text, optional corrections, and highlighted changes.
+- Estimate blank or underused pages and download text output.
+- Summarize all extracted document text using Groq's chat API.
+- Create MongoDB-backed accounts; passwords are hashed with bcrypt.
+- Keep PDFs and OCR results in the active Streamlit session instead of saving them to MongoDB.
 
 ## Technology stack
 
 - **Language/runtime:** Python 3.11
-- **Web app and interface:** Streamlit
+- **App and UI:** Streamlit
 - **PDF rendering:** PyMuPDF (`fitz`)
-- **Image processing:** Pillow, OpenCV, NumPy
-- **Printed OCR:** Tesseract OCR through `pytesseract`
-- **Handwriting OCR:** Hugging Face Transformers, PyTorch, and Microsoft's `microsoft/trocr-small-handwritten`
-- **Text correction:** Hugging Face Transformers and Google's `google/flan-t5-small`
-- **AI summaries:** Groq Python SDK and Groq Chat Completions API (default model: `openai/gpt-oss-20b`)
-- **Accounts:** MongoDB through PyMongo; passwords hashed with bcrypt
+- **OCR:** Tesseract OCR through `pytesseract`
+- **Image processing and page analysis:** Pillow, OpenCV, NumPy
 - **Text comparison:** `diff-match-patch`
-- **Deployment:** Docker, Render, and Streamlit Community Cloud support files
+- **Optional proofreading and summaries:** Groq Python SDK, Groq Chat Completions API, default model `openai/gpt-oss-20b`
+- **Accounts:** MongoDB through PyMongo; bcrypt password hashing
+- **Deployment:** Docker and Render; `packages.txt` supports Streamlit Community Cloud
 
 ## Configuration
 
-Set secrets as environment variables on the host. Do not commit real credentials to the repository.
+Store credentials as environment variables on the host. Never commit real credentials to Git.
 
-| Variable | Required for | Description |
+| Variable | Used for | Description |
 | --- | --- | --- |
-| `MONGODB_URI` | Sign up and login | MongoDB connection string. For MongoDB Atlas, allow the deployed host in Network Access. |
+| `MONGODB_URI` | Sign-up and login | MongoDB connection URI. For MongoDB Atlas, allow the app host in Network Access. |
 | `MONGODB_DATABASE` | Optional | Database name; defaults to `scanwise`. |
-| `GROQ_API_KEY` | Ask with AI | API key from the Groq console. |
-| `GROQ_MODEL` | Optional | Groq model ID; defaults to `llama-3.3-70b-versatile`. |
+| `GROQ_API_KEY` | Proofreading and summaries | API key from the Groq console. If omitted, text is extracted without AI proofreading and summaries are disabled. |
+| `GROQ_MODEL` | Optional | Groq model ID; defaults to `openai/gpt-oss-20b`. |
 
-For local development, create `.streamlit/secrets.toml` (this file should not be committed):
+For local development, create `.streamlit/secrets.toml` (do not commit it):
 
 ```toml
 MONGODB_URI = "mongodb+srv://<user>:<password>@<cluster>/?retryWrites=true&w=majority"
@@ -54,16 +55,15 @@ GROQ_API_KEY = "gsk_your_key_here"
 GROQ_MODEL = "openai/gpt-oss-20b"
 ```
 
-Add the same values under the Render service's environment variables/secrets to enable account access and AI summaries in production. The app still serves its public Home and Features pages when these integrations have not been configured; account creation and AI summaries remain unavailable until their respective secrets are set.
+The Home and Features pages work without secrets. Account registration and login need `MONGODB_URI`; AI proofreading and summaries need `GROQ_API_KEY`.
 
 ## Run locally
 
 ### Prerequisites
 
-- Python 3.11 (recommended) and Git.
-- Tesseract OCR for the printed-text engine. Install Tesseract for your OS and ensure `tesseract` is on `PATH`. Windows installations in the usual Program Files locations are detected automatically.
-- Internet access for the first download of the Hugging Face OCR and correction models.
-- MongoDB and Groq credentials only if you want to use account registration/login and **Ask with AI** locally.
+- Python 3.11 and Git.
+- Tesseract OCR installed and available on `PATH`. On Windows, the app also checks common installation locations.
+- MongoDB and Groq credentials only for account features and AI proofreading/summaries.
 
 ### Install and start
 
@@ -73,7 +73,7 @@ cd ScanWise
 python -m venv .venv
 ```
 
-Activate the virtual environment:
+Activate the environment:
 
 ```powershell
 # Windows PowerShell
@@ -85,20 +85,17 @@ Activate the virtual environment:
 source .venv/bin/activate
 ```
 
-Install the matched CPU-only PyTorch/TorchVision versions first, then the rest of the app requirements:
+Install and run:
 
 ```bash
 python -m pip install --upgrade pip
-pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open [http://localhost:8501/work/projects/scanwise/app/](http://localhost:8501/work/projects/scanwise/app/). Visit **Account** to register/sign in, then open **Workspace** to upload and analyze a PDF. The first model load may take several minutes. Transformers is pinned to 4.57.6 because this app uses its `text2text-generation` pipeline for FLAN-T5.
+Open [http://localhost:8501/work/projects/scanwise/app/](http://localhost:8501/work/projects/scanwise/app/), sign in or create an account if MongoDB is configured, and process a PDF from **Workspace**.
 
 ## Run with Docker
-
-Build and run from the repository root:
 
 ```bash
 docker build -t scanwise .
@@ -108,33 +105,26 @@ docker run --rm -p 8501:8501 \
   scanwise
 ```
 
-Open [http://localhost:8501/work/projects/scanwise/app/](http://localhost:8501/work/projects/scanwise/app/). Omit either environment variable when you do not need that integration. Docker installs the system Tesseract package and uses the matched CPU PyTorch/TorchVision pair.
+Open [http://localhost:8501/work/projects/scanwise/app/](http://localhost:8501/work/projects/scanwise/app/). Docker installs Tesseract and the app's Python dependencies; it does not download any PyTorch or Transformers models.
 
-## Deployment
+## Render Free deployment
 
-### Current recommendation
+1. Connect this GitHub repository to a Render Web Service and use the included `Dockerfile`.
+2. Set `MONGODB_URI` and `GROQ_API_KEY` in the service's Environment settings if you want sign-in and AI features. Set `MONGODB_DATABASE` or `GROQ_MODEL` only to override their defaults.
+3. Keep Render's dynamic `PORT` setting; the Docker start command already uses it.
+4. Keep the portfolio Pages Function pointed at the Render origin to preserve the custom app URL and proxy WebSockets.
 
-**Keep the existing Render deployment and use a 2 GB web-service instance (Render's current `1c-2g` plan, formerly Standard).** ScanWise loads PyTorch and OCR models into memory, and the app is already deployed on Render with its domain routing in place. Render currently lists 2 GB for `1c-2g`; confirm its current price in your dashboard before upgrading. The Render free instance has substantially less memory and may restart or fail while loading the models. See [Render compute plans](https://render.com/docs/compute-plans) and [Render pricing](https://render.com/pricing).
+This version removes local PyTorch/Transformers model inference to reduce RAM use on Render Free. Tesseract still needs CPU and memory to render and OCR PDFs, so start with small PDFs. Free web services can spin down while idle and take time to wake up. Uploaded documents and page previews are kept in session memory only.
 
-Streamlit Community Cloud can be a no-cost way to try the app, but its resource limits vary by app and can throttle or stop apps that exceed them; the published approximate range is 690 MB to 2.7 GB. Hugging Face Spaces lists 16 GB RAM for CPU Basic, but current docs say creating a compute-based Docker/Gradio Space requires a paid plan/subscription, so do not assume it is a free deployment for a new account. See [Streamlit app resources](https://docs.streamlit.io/deploy/streamlit-community-cloud/manage-your-app) and [Hugging Face Spaces overview](https://huggingface.co/docs/hub/en/spaces-overview).
-
-### Render setup
-
-1. Connect the GitHub repository and deploy using the included `Dockerfile`.
-2. Choose a 2 GB web-service instance (`1c-2g` / legacy Standard) for the OCR models.
-3. Set `MONGODB_URI`, `GROQ_API_KEY`, and optionally `MONGODB_DATABASE` and `GROQ_MODEL` in the service's Environment settings.
-4. Keep the app bound to the Render-provided `PORT`; the Docker command already does this.
-5. Keep the portfolio redirect for `/work/projects/scanwise/app` pointed at the Render service so Streamlit WebSockets work correctly.
-
-The summary feature sends extracted document text to Groq when the user selects **Ask with AI**. Do not send sensitive documents unless you are comfortable processing their text through the configured Groq account and its applicable data terms.
+When **Ask with AI** or Groq proofreading is used, extracted text is sent to Groq. Do not submit sensitive documents unless you are comfortable with that processing under your Groq account's applicable terms.
 
 ## Repository files
 
-- `app.py` — Streamlit navigation, account forms, OCR workflow, results, and Groq summary.
-- `requirements.txt` — Python dependencies and compatible model runtime pins.
-- `packages.txt` — system package list for Streamlit Community Cloud.
-- `Dockerfile` — Render and other Docker host setup.
-- `.streamlit/config.toml` — theme and mounted URL path configuration.
+- `app.py` — Streamlit navigation, account forms, Tesseract OCR, results, and Groq calls.
+- `requirements.txt` — lightweight Python dependencies.
+- `packages.txt` — Tesseract packages for Streamlit Community Cloud.
+- `Dockerfile` — Render and Docker deployment setup.
+- `.streamlit/config.toml` — app theme and mounted URL path.
 - `sample.pdf` — sample document.
 - `LICENSE` — MIT License.
 

@@ -15,10 +15,6 @@ WORKDIR /app
 # Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip
 
-# Install a matching CPU-only PyTorch/TorchVision pair. Keeping these versions
-# aligned prevents torchvision operator registration errors during Transformers imports.
-RUN pip install --no-cache-dir torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cpu
-
 # Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

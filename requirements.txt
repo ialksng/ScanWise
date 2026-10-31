@@ -2,14 +2,9 @@ streamlit
 PyMuPDF
 pytesseract
 Pillow
-torch==2.7.1
-torchvision==0.22.1
-transformers==4.57.6
 opencv-python-headless
 numpy
-sentencepiece
 diff-match-patch
-timm
 pymongo[srv]
 bcrypt
 groq
