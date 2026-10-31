@@ -2,6 +2,7 @@ import hashlib
 import io
 import os
 import shutil
+from datetime import datetime, timezone
 
 import cv2
 import fitz  # PyMuPDF
@@ -12,6 +13,10 @@ import torch
 from diff_match_patch import diff_match_patch
 from PIL import Image
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel, pipeline
+import bcrypt
+from groq import Groq
+from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 
 st.set_page_config(
@@ -47,6 +52,11 @@ st.markdown(
       [data-testid="stExpander"] { background: #fff; border: 1px solid #e3ebf5; border-radius: 14px; }
       .sw-diff { background: #fff; border: 1px solid #e3ebf5; border-radius: 12px; color: #24364d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.75; padding: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; }
       .sw-footer { border-top: 1px solid #e1e9f2; color: #8190a4; font-size: .8rem; margin-top: 3rem; padding-top: 1rem; }
+      .sw-brand { color: #14233b; font-size: 1.25rem; font-weight: 850; letter-spacing: -.04em; }
+      .sw-brand span { color: #2868b2; }
+      .sw-nav-caption { color: #718198; font-size: .84rem; margin-top: .45rem; }
+      .sw-feature-card { min-height: 175px; }
+      .sw-auth-note { background: #f0f6ff; border: 1px solid #dce9fa; border-radius: 12px; padding: .8rem 1rem; }
       @media (max-width: 700px) { .block-container { padding: 1rem 1rem 3rem; } [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 18px; padding: .7rem; } }
     </style>
     """,
@@ -245,94 +255,237 @@ def render_results(pages, uploaded_name):
                     st.markdown(make_diff_html(page["raw_text"], page["corrected_text"]), unsafe_allow_html=True)
 
 
-with st.sidebar:
-    st.markdown("### 📄 ScanWise")
-    st.caption("A calmer workspace for scanned documents")
-    st.divider()
-    st.markdown("**1 · Choose an engine**")
-    engine_choice = st.radio(
-        "OCR engine",
-        ("Printed text · Tesseract", "Handwriting · TrOCR"),
-        label_visibility="collapsed",
-        help="Tesseract is faster for clean printed pages. TrOCR is designed for handwriting and takes longer.",
+def configured_value(name, default=""):
+    value = os.getenv(name)
+    if value:
+        return value
+    try:
+        return str(st.secrets.get(name, default))
+    except Exception:
+        return default
+
+
+@st.cache_resource(show_spinner=False)
+def mongo_database(uri):
+    client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+    client.admin.command("ping")
+    database_name = configured_value("MONGODB_DATABASE", "scanwise")
+    database = client[database_name]
+    database.users.create_index("email", unique=True)
+    return database
+
+
+def auth_database():
+    uri = configured_value("MONGODB_URI")
+    return mongo_database(uri) if uri else None
+
+
+def groq_client():
+    key = configured_value("GROQ_API_KEY")
+    return Groq(api_key=key) if key else None
+
+
+def summarize_document(pages, client):
+    document = "\n\n".join(
+        f"Page {page['page_number']}: {page['corrected_text']}"
+        for page in pages if page["corrected_text"].strip()
     )
-    if engine_choice == "Printed text · Tesseract":
-        if tesseract_available:
-            st.success("Tesseract is ready")
-        else:
-            st.warning("Tesseract was not found. Try TrOCR or install Tesseract.")
-    st.divider()
-    st.markdown("**How it works**")
-    st.caption("1. Add a PDF\n\n2. Extract and correct text\n\n3. Review page usage and download")
-    st.markdown('<div class="sw-footer">Made by Alok Singh</div>', unsafe_allow_html=True)
-
-
-with st.container(border=True):
-    hero_col, link_col = st.columns([5, 1], vertical_alignment="center")
-    with hero_col:
-        st.markdown('<div class="sw-kicker">PDF document workspace</div>', unsafe_allow_html=True)
-        st.markdown('<h1 class="sw-title">Make every page count.</h1>', unsafe_allow_html=True)
-        st.markdown(
-            '<p class="sw-subtitle">Turn scanned PDFs into readable text, review AI-assisted corrections, and spot pages that may be going to waste.</p>',
-            unsafe_allow_html=True,
+    if not document.strip():
+        raise ValueError("There is no recognized text to summarize. Run OCR first or try a clearer scan.")
+    chunks = [document[index:index + 12000] for index in range(0, len(document), 12000)]
+    summaries = []
+    for index, chunk in enumerate(chunks, start=1):
+        response = client.chat.completions.create(
+            model=configured_value("GROQ_MODEL", "openai/gpt-oss-20b"),
+            messages=[
+                {"role": "system", "content": "Summarize the supplied document faithfully. Preserve key facts, names, dates, decisions, and action items. Do not invent details. Use clear headings and concise bullets."},
+                {"role": "user", "content": f"Summarize part {index} of {len(chunks)} of this document:\n\n{chunk}"},
+            ],
+            temperature=0.2,
+            max_tokens=1200,
         )
-    with link_col:
-        st.link_button("ialksng", "https://ialksng.me", help="ScanWise is made by Alok Singh", use_container_width=True)
-
-upload_col, tips_col = st.columns([1.8, 1], gap="large")
-with upload_col:
-    st.markdown('<div class="sw-step">02 · Add your document</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sw-section-title">Start with a PDF</div>', unsafe_allow_html=True)
-    st.caption("Choose a scanned PDF to extract text and review page usage.")
-    uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"], label_visibility="collapsed")
-    if uploaded_file is not None:
-        file_bytes = uploaded_file.getvalue()
-        st.markdown(
-            f'<div class="sw-file-meta"><strong>{uploaded_file.name}</strong> &nbsp;·&nbsp; {len(file_bytes) / (1024 * 1024):.2f} MB</div>',
-            unsafe_allow_html=True,
-        )
-        run_analysis = st.button("Analyze document", type="primary", use_container_width=True)
-    else:
-        file_bytes = b""
-        run_analysis = False
-
-with tips_col:
-    st.markdown('<div class="sw-step">03 · Review with confidence</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sw-section-title">What you will get</div>', unsafe_allow_html=True)
-    st.markdown(
-        "- Text extracted page by page\n- Original and corrected text side by side\n- A downloadable text file\n- An estimate of blank or underused pages"
+        summaries.append(response.choices[0].message.content.strip())
+    if len(summaries) == 1:
+        return summaries[0]
+    response = client.chat.completions.create(
+        model=configured_value("GROQ_MODEL", "openai/gpt-oss-20b"),
+        messages=[
+            {"role": "system", "content": "Combine these section summaries into one accurate overview of the complete document. Keep key facts, decisions, dates, and action items. Do not add unsupported information."},
+            {"role": "user", "content": "\n\n".join(summaries)},
+        ],
+        temperature=0.2,
+        max_tokens=1600,
     )
-    st.caption("First use may take longer while the AI models are downloaded and cached.")
+    return response.choices[0].message.content.strip()
 
-if file_bytes:
-    analysis_key = f"{hashlib.sha256(file_bytes).hexdigest()}:{engine_choice}"
-    if run_analysis:
-        if not file_bytes:
-            st.error("The selected PDF is empty.")
-        else:
-            try:
-                with st.status("Preparing your document…", expanded=True) as status:
-                    progress = st.progress(0, text="Starting…")
-                    pages = analyze_pdf(file_bytes, engine_choice, progress)
-                    progress.empty()
-                    st.session_state["scanwise_analysis"] = {"key": analysis_key, "pages": pages}
-                    status.update(label="Analysis complete", state="complete", expanded=False)
-            except Exception as error:
-                st.error("ScanWise could not complete this analysis.")
-                st.info("Try a smaller PDF, switch OCR engines, or retry after the service finishes warming up.")
-                with st.expander("Technical details"):
-                    st.exception(error)
 
-    analysis = st.session_state.get("scanwise_analysis")
-    if analysis and analysis["key"] == analysis_key:
-        st.divider()
-        render_results(analysis["pages"], uploaded_file.name)
-    elif analysis and analysis["key"] != analysis_key:
-        st.info("The PDF or OCR engine changed. Select **Analyze document** to refresh the results.")
+def show_auth_panel():
+    st.markdown("### Your ScanWise account")
+    if st.session_state.get("scanwise_user"):
+        user = st.session_state["scanwise_user"]
+        st.success(f"Signed in as {user['email']}")
+        if st.button("Sign out", key="sign_out"):
+            st.session_state.pop("scanwise_user", None)
+            st.session_state.pop("scanwise_analysis", None)
+            st.rerun()
+        return
+    if not configured_value("MONGODB_URI"):
+        st.warning("Sign-in is not configured yet. Add MONGODB_URI to the app's environment variables or Streamlit secrets to enable accounts.")
+        return
+    mode = st.radio("Account action", ("Log in", "Sign up"), horizontal=True, label_visibility="collapsed", key="auth_mode")
+    with st.form("account_form"):
+        email = st.text_input("Email", autocomplete="email").strip().lower()
+        password = st.text_input("Password", type="password", autocomplete="current-password")
+        submitted = st.form_submit_button(mode, type="primary", use_container_width=True)
+    if not submitted:
+        return
+    if not email or len(password) < 8:
+        st.error("Enter an email and a password with at least 8 characters.")
+        return
+    try:
+        users = auth_database().users
+        if mode == "Sign up":
+            users.insert_one({
+                "email": email,
+                "password_hash": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
+                "created_at": datetime.now(timezone.utc),
+            })
+            st.session_state["scanwise_user"] = {"email": email}
+            st.success("Account created. You are signed in.")
+            st.rerun()
+        user = users.find_one({"email": email})
+        if user and bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+            st.session_state["scanwise_user"] = {"email": email}
+            st.rerun()
+        st.error("Email or password is incorrect.")
+    except DuplicateKeyError:
+        st.error("An account with that email already exists. Log in instead.")
+    except (PyMongoError, ValueError) as error:
+        st.error("Could not reach MongoDB. Check MONGODB_URI and the Atlas network access list.")
+        with st.expander("Technical details"):
+            st.code(str(error))
+
+
+# Top navigation is kept in Streamlit's app shell so it works at the mounted deployment path.
+nav_brand, nav_home, nav_features, nav_workspace, nav_account, nav_author = st.columns([2.2, 1, 1.1, 1.2, 1.2, 1])
+with nav_brand:
+    st.markdown('<div class="sw-brand">▦ <span>ScanWise</span></div><div class="sw-nav-caption">Your document workspace</div>', unsafe_allow_html=True)
+for column, label, page_name in (
+    (nav_home, "Home", "Home"), (nav_features, "Features", "Features"), (nav_workspace, "Workspace", "Workspace"), (nav_account, "Account", "Account")
+):
+    with column:
+        if st.button(label, key=f"nav_{page_name}", use_container_width=True, type="primary" if st.session_state.get("scanwise_page", "Home") == page_name else "secondary"):
+            st.session_state["scanwise_page"] = page_name
+            st.rerun()
+with nav_author:
+    st.link_button("ialksng", "https://ialksng.me", help="Project developer", use_container_width=True)
+st.divider()
+
+page = st.session_state.get("scanwise_page", "Home")
+if page == "Account":
+    with st.container(border=True):
+        st.markdown('<div class="sw-kicker">Account access</div><h1 class="sw-title">Welcome to ScanWise.</h1><p class="sw-subtitle">Create an account or sign in to open your private document workspace.</p>', unsafe_allow_html=True)
+        show_auth_panel()
+elif page == "Home":
+    with st.container(border=True):
+        hero_copy, hero_action = st.columns([4, 1.2], vertical_alignment="center")
+        with hero_copy:
+            st.markdown('<div class="sw-kicker">PDF document workspace</div><h1 class="sw-title">Make every page count.</h1><p class="sw-subtitle">Turn scanned PDFs into readable text, review corrections, and understand the full document with an AI summary.</p>', unsafe_allow_html=True)
+        with hero_action:
+            if st.button("Open workspace →", type="primary", use_container_width=True):
+                st.session_state["scanwise_page"] = "Workspace"
+                st.rerun()
+    st.markdown("### From scanned pages to clear takeaways")
+    home_cols = st.columns(3, gap="large")
+    for column, title, detail in zip(
+        home_cols,
+        ("Extract", "Review", "Understand"),
+        ("Read printed pages or handwriting with OCR.", "Compare recognized text with corrected text.", "Ask with AI for a summary of the complete document."),
+    ):
+        with column, st.container(border=True):
+            st.markdown(f'<div class="sw-section-title">{title}</div><p class="sw-muted">{detail}</p>', unsafe_allow_html=True)
+    if not st.session_state.get("scanwise_user"):
+        st.info("Create an account or sign in from **Account** to use the workspace.")
+elif page == "Features":
+    st.markdown('<div class="sw-kicker">Built for scanned documents</div><h1 class="sw-title">A clearer way to read PDFs.</h1><p class="sw-subtitle">Extract, review, and understand scanned documents in one workspace.</p>', unsafe_allow_html=True)
+    feature_cols = st.columns(3, gap="large")
+    feature_cards = [
+        ("01 · Extract", "Printed and handwritten OCR", "Choose Tesseract for fast printed text or TrOCR for handwriting, with page previews."),
+        ("02 · Review", "Find and fix recognition issues", "Compare the recognized text with AI-assisted spelling and grammar corrections."),
+        ("03 · Understand", "Ask with AI", "Create a complete-document summary with Groq after extracting the PDF text."),
+    ]
+    for column, (step, title, description) in zip(feature_cols, feature_cards):
+        with column, st.container(border=True):
+            st.markdown(f'<div class="sw-step">{step}</div><div class="sw-section-title">{title}</div><p class="sw-muted">{description}</p>', unsafe_allow_html=True)
+    st.info("PDFs are processed for the current session. The account database stores account credentials as password hashes; document files and OCR results are not saved to MongoDB.")
 else:
-    st.session_state.pop("scanwise_analysis", None)
+    with st.container(border=True):
+        st.markdown('<div class="sw-kicker">PDF document workspace</div><h1 class="sw-title">Make every page count.</h1><p class="sw-subtitle">Turn scanned PDFs into readable text, review corrections, and get an AI summary of the complete document.</p>', unsafe_allow_html=True)
+    if not st.session_state.get("scanwise_user"):
+        st.markdown('<div class="sw-auth-note">Sign in or create an account to use the workspace. Your account is managed through MongoDB.</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            show_auth_panel()
+    else:
+        engine_choice = st.radio("OCR engine", ("Printed text · Tesseract", "Handwriting · TrOCR"), horizontal=True, help="Tesseract is faster for printed pages. TrOCR is designed for handwriting and takes longer.")
+        if engine_choice == "Printed text · Tesseract":
+            if tesseract_available:
+                st.caption("Tesseract is ready for printed text.")
+            else:
+                st.warning("Tesseract was not found. Switch to TrOCR or install Tesseract.")
+        upload_col, tips_col = st.columns([1.8, 1], gap="large")
+        with upload_col, st.container(border=True):
+            st.markdown('<div class="sw-step">01 · Add your document</div><div class="sw-section-title">Start with a PDF</div>', unsafe_allow_html=True)
+            st.caption("Choose a scanned PDF to extract text and review page usage.")
+            uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"], label_visibility="collapsed")
+            file_bytes = uploaded_file.getvalue() if uploaded_file else b""
+            if uploaded_file:
+                st.markdown(f'<div class="sw-file-meta"><strong>{uploaded_file.name}</strong> &nbsp;·&nbsp; {len(file_bytes) / (1024 * 1024):.2f} MB</div>', unsafe_allow_html=True)
+                run_analysis = st.button("Analyze document", type="primary", use_container_width=True)
+            else:
+                run_analysis = False
+        with tips_col, st.container(border=True):
+            st.markdown('<div class="sw-step">02 · Review with confidence</div><div class="sw-section-title">What you will get</div>', unsafe_allow_html=True)
+            st.markdown("- Page-by-page extracted text\n- Original and corrected text\n- Downloadable results\n- Blank-page estimate\n- Complete-document AI summary")
+            st.caption("First use can take longer while OCR models download and warm up.")
+        if file_bytes:
+            analysis_key = f"{hashlib.sha256(file_bytes).hexdigest()}:{engine_choice}"
+            if run_analysis:
+                try:
+                    with st.status("Preparing your document…", expanded=True) as status:
+                        progress = st.progress(0, text="Starting…")
+                        pages = analyze_pdf(file_bytes, engine_choice, progress)
+                        progress.empty()
+                        st.session_state["scanwise_analysis"] = {"key": analysis_key, "pages": pages}
+                        st.session_state.pop("scanwise_summary", None)
+                        status.update(label="Analysis complete", state="complete", expanded=False)
+                except Exception as error:
+                    st.error("ScanWise could not complete this analysis. Try a smaller PDF, switch OCR engines, or retry after the service warms up.")
+                    with st.expander("Technical details"):
+                        st.exception(error)
+            analysis = st.session_state.get("scanwise_analysis")
+            if analysis and analysis["key"] == analysis_key:
+                st.divider()
+                render_results(analysis["pages"], uploaded_file.name)
+                st.markdown("### Ask with AI")
+                groq_ready = bool(configured_value("GROQ_API_KEY"))
+                if not groq_ready:
+                    st.info("Add GROQ_API_KEY to the app's environment variables or Streamlit secrets to enable document summaries.")
+                st.caption("Summarize the complete uploaded document with Groq.")
+                if st.button("Ask with AI", type="primary", disabled=not groq_ready, key="ask_with_ai"):
+                    try:
+                        with st.spinner("Reading the complete document and preparing a summary…"):
+                            summary = summarize_document(analysis["pages"], groq_client())
+                        st.session_state["scanwise_summary"] = summary
+                    except Exception as error:
+                        st.error("Groq could not summarize this document. Check the API key, model setting, and available quota.")
+                        with st.expander("Technical details"):
+                            st.exception(error)
+                if st.session_state.get("scanwise_summary"):
+                    st.markdown(st.session_state["scanwise_summary"])
+            elif analysis:
+                st.info("The PDF or OCR engine changed. Select **Analyze document** to refresh the results.")
+        elif st.session_state.get("scanwise_analysis"):
+            st.session_state.pop("scanwise_analysis", None)
+            st.session_state.pop("scanwise_summary", None)
 
-st.markdown(
-    '<div class="sw-footer">ScanWise · Printed OCR by Tesseract · Handwriting OCR by TrOCR · Text correction by FLAN-T5</div>',
-    unsafe_allow_html=True,
-)
+st.markdown('<div class="sw-footer">ScanWise · OCR by Tesseract and TrOCR · Correction by FLAN-T5 · Summaries by Groq</div>', unsafe_allow_html=True)

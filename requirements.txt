@@ -10,3 +10,6 @@ numpy
 sentencepiece
 diff-match-patch
 timm
+pymongo[srv]
+bcrypt
+groq
