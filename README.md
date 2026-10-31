@@ -11,7 +11,7 @@ The app is designed to run on small instances such as Render Free: local OCR use
 - **Developer:** [Alok Singh — ialksng.me](https://ialksng.me)
 - **Source code:** [github.com/ialksng/ScanWise](https://github.com/ialksng/ScanWise)
 
-The app's navbar contains **Home**, **Features**, **Workspace**, and **Account**, plus the **ialksng** developer link. The portfolio route proxies requests to Render while keeping the public URL on `ialksng.me`, including the Streamlit WebSocket connection.
+The app's navbar contains **Home**, **Features**, **Workspace**, and **Account**. The footer contains the **ialksng** developer link. The portfolio route proxies requests to Render while keeping the public URL on `ialksng.me`, including the Streamlit WebSocket connection.
 
 ## Features
 

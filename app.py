@@ -47,12 +47,14 @@ st.markdown(
       .stButton > button[kind="primary"] { box-shadow: 0 7px 16px rgba(31, 91, 161, .18); }
       [data-testid="stExpander"] { background: #fff; border: 1px solid #e3ebf5; border-radius: 14px; }
       .sw-diff { background: #fff; border: 1px solid #e3ebf5; border-radius: 12px; color: #24364d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.75; padding: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .sw-footer { border-top: 1px solid #e1e9f2; color: #8190a4; font-size: .8rem; margin-top: 3rem; padding-top: 1rem; }
+      .sw-footer { color: #8190a4; font-size: .8rem; margin-top: .25rem; padding: .65rem 0 1rem; }
       .sw-brand { color: #14233b; font-size: 1.25rem; font-weight: 850; letter-spacing: -.04em; }
       .sw-brand span { color: #2868b2; }
       .sw-nav-caption { color: #718198; font-size: .84rem; margin-top: .45rem; }
       .sw-feature-card { min-height: 175px; }
       .sw-auth-note { background: #f0f6ff; border: 1px solid #dce9fa; border-radius: 12px; padding: .8rem 1rem; }
+      [data-testid="stHorizontalBlock"] .stButton > button,
+      [data-testid="stHorizontalBlock"] [data-testid="stLinkButton"] a { min-height: 2.65rem; white-space: nowrap; }
       @media (max-width: 700px) { .block-container { padding: 1rem 1rem 3rem; } [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 18px; padding: .7rem; } }
     </style>
     """,
@@ -364,7 +366,11 @@ def show_auth_panel():
 
 
 # Top navigation is kept in Streamlit's app shell so it works at the mounted deployment path.
-nav_brand, nav_home, nav_features, nav_workspace, nav_account, nav_author = st.columns([2.2, 1, 1.1, 1.2, 1.2, 1])
+nav_brand, nav_home, nav_features, nav_workspace, nav_account = st.columns(
+    [2, 1, 1.1, 1.2, 1.1],
+    vertical_alignment="center",
+    gap="small",
+)
 with nav_brand:
     st.markdown('<div class="sw-brand">▦ <span>ScanWise</span></div><div class="sw-nav-caption">Your document workspace</div>', unsafe_allow_html=True)
 for column, label, page_name in (
@@ -374,8 +380,6 @@ for column, label, page_name in (
         if st.button(label, key=f"nav_{page_name}", use_container_width=True, type="primary" if st.session_state.get("scanwise_page", "Home") == page_name else "secondary"):
             st.session_state["scanwise_page"] = page_name
             st.rerun()
-with nav_author:
-    st.link_button("ialksng", "https://ialksng.me", help="Project developer", use_container_width=True)
 st.divider()
 
 page = st.session_state.get("scanwise_page", "Home")
@@ -483,4 +487,9 @@ else:
             st.session_state.pop("scanwise_analysis", None)
             st.session_state.pop("scanwise_summary", None)
 
-st.markdown('<div class="sw-footer">ScanWise · Lightweight printed-text OCR by Tesseract · Optional proofreading and summaries by Groq</div>', unsafe_allow_html=True)
+st.divider()
+footer_copy, footer_link = st.columns([5, 1], vertical_alignment="center", gap="small")
+with footer_copy:
+    st.markdown('<div class="sw-footer">ScanWise · Lightweight printed-text OCR by Tesseract · Optional proofreading and summaries by Groq</div>', unsafe_allow_html=True)
+with footer_link:
+    st.link_button("ialksng", "https://ialksng.me", help="Project developer", use_container_width=True)
